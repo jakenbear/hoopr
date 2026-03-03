@@ -21,8 +21,12 @@ interface UseMotionTrackingReturn {
 
 const DEFAULT_STEP_LENGTH = 0.75; // meters, average step
 const FREE_THROW_DISTANCE = 4.57; // meters from hoop
-const STEP_THRESHOLD = 10.5; // acceleration magnitude threshold for step detection
-const STEP_COOLDOWN_MS = 300; // minimum time between steps
+
+// Step detection tuning
+const STEP_COOLDOWN_MS = 350; // minimum time between steps (~170 BPM max cadence)
+const FILTER_ALPHA = 0.15; // low-pass filter smoothing (lower = smoother, slower)
+const MIN_PEAK_VALLEY_DIFF = 1.5; // minimum swing in filtered signal to count as a step
+const GRAVITY = 9.81;
 
 export function useMotionTracking(): UseMotionTrackingReturn {
   const [position, setPosition] = useState<Position>({ x: 0, y: 0 });
@@ -33,7 +37,7 @@ export function useMotionTracking(): UseMotionTrackingReturn {
   const [error, setError] = useState<string | null>(null);
 
   // Refs for tracking state without re-renders
-  const courtBearingRef = useRef<number>(0); // compass bearing from hoop toward FT line
+  const courtBearingRef = useRef<number>(0);
   const headingRef = useRef<number>(0);
   const positionRef = useRef<Position>({ x: 0, y: 0 });
   const lastStepTimeRef = useRef<number>(0);
@@ -44,12 +48,13 @@ export function useMotionTracking(): UseMotionTrackingReturn {
     steps: number;
   } | null>(null);
 
-  // Step detection state
-  const prevMagnitudeRef = useRef<number>(9.8);
-  const risingRef = useRef(false);
+  // Improved step detection state
+  const filteredRef = useRef<number>(GRAVITY); // low-pass filtered magnitude
+  const valleyRef = useRef<number>(GRAVITY); // most recent local minimum
+  const wasRisingRef = useRef(false); // was the signal going up last sample?
+  const prevFilteredRef = useRef<number>(GRAVITY);
 
   const requestPermissions = useCallback(async (): Promise<boolean> => {
-    // iOS 13+ requires explicit permission for motion sensors
     const DME = DeviceMotionEvent as unknown as {
       requestPermission?: () => Promise<string>;
     };
@@ -82,7 +87,6 @@ export function useMotionTracking(): UseMotionTrackingReturn {
   // Compass heading listener
   useEffect(() => {
     const handleOrientation = (e: DeviceOrientationEvent) => {
-      // Use webkitCompassHeading on iOS, alpha on Android
       const webkit = e as DeviceOrientationEvent & {
         webkitCompassHeading?: number;
       };
@@ -91,7 +95,6 @@ export function useMotionTracking(): UseMotionTrackingReturn {
       if (webkit.webkitCompassHeading != null) {
         compassHeading = webkit.webkitCompassHeading;
       } else if (e.alpha != null) {
-        // Android: alpha is relative to device orientation, convert to compass
         compassHeading = (360 - e.alpha) % 360;
       }
 
@@ -107,7 +110,7 @@ export function useMotionTracking(): UseMotionTrackingReturn {
     };
   }, []);
 
-  // Step detection via accelerometer
+  // Step detection via accelerometer with low-pass filter
   useEffect(() => {
     const handleMotion = (e: DeviceMotionEvent) => {
       if (!isTrackingRef.current && !calibrationRef.current?.active) return;
@@ -115,38 +118,46 @@ export function useMotionTracking(): UseMotionTrackingReturn {
       const acc = e.accelerationIncludingGravity;
       if (!acc || acc.x == null || acc.y == null || acc.z == null) return;
 
-      // Magnitude of acceleration
-      const magnitude = Math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2);
+      const rawMagnitude = Math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2);
 
+      // Low-pass filter: smooths out hand jitter, screen taps, etc.
+      // Only passes through the ~1-2 Hz walking frequency
+      const filtered =
+        FILTER_ALPHA * rawMagnitude + (1 - FILTER_ALPHA) * filteredRef.current;
+      filteredRef.current = filtered;
+
+      const prev = prevFilteredRef.current;
+      const isRising = filtered > prev;
       const now = Date.now();
-      const prev = prevMagnitudeRef.current;
 
-      // Detect a step as a peak in acceleration magnitude
-      if (magnitude > prev && !risingRef.current) {
-        risingRef.current = true;
-      } else if (
-        magnitude < prev &&
-        risingRef.current &&
-        prev > STEP_THRESHOLD &&
+      // Track the valley (local minimum) before each peak
+      if (!isRising && filtered < valleyRef.current) {
+        valleyRef.current = filtered;
+      }
+
+      // Detect step: signal was rising, now falling (we just passed a peak)
+      // AND the peak-to-valley swing is large enough (real step, not noise)
+      // AND enough time has passed since last step
+      if (
+        wasRisingRef.current &&
+        !isRising &&
+        prev - valleyRef.current >= MIN_PEAK_VALLEY_DIFF &&
         now - lastStepTimeRef.current > STEP_COOLDOWN_MS
       ) {
-        risingRef.current = false;
         lastStepTimeRef.current = now;
+        // Reset valley for next step
+        valleyRef.current = filtered;
 
-        // Always update step count in UI
         setStepCount((c) => c + 1);
 
-        // Count step for calibration
         if (calibrationRef.current?.active) {
           calibrationRef.current.steps++;
         }
 
-        // Update position if actively tracking
         if (isTrackingRef.current) {
           const courtBearing = courtBearingRef.current;
           const currentHeading = headingRef.current;
 
-          // Relative angle: which direction am I walking relative to the court
           const relAngle =
             ((currentHeading - courtBearing + 360) % 360) * (Math.PI / 180);
 
@@ -162,7 +173,8 @@ export function useMotionTracking(): UseMotionTrackingReturn {
         }
       }
 
-      prevMagnitudeRef.current = magnitude;
+      wasRisingRef.current = isRising;
+      prevFilteredRef.current = filtered;
     };
 
     window.addEventListener("devicemotion", handleMotion);
@@ -172,8 +184,6 @@ export function useMotionTracking(): UseMotionTrackingReturn {
   }, [stepLength]);
 
   const startCalibration = useCallback((compassHeading: number) => {
-    // User is under the hoop, facing the free throw line
-    // compassHeading = the direction from hoop toward the court
     courtBearingRef.current = compassHeading;
     calibrationRef.current = {
       active: true,
@@ -183,6 +193,11 @@ export function useMotionTracking(): UseMotionTrackingReturn {
     positionRef.current = { x: 0, y: 0 };
     setPosition({ x: 0, y: 0 });
     setStepCount(0);
+    // Reset filter state
+    filteredRef.current = GRAVITY;
+    prevFilteredRef.current = GRAVITY;
+    valleyRef.current = GRAVITY;
+    wasRisingRef.current = false;
   }, []);
 
   const finishCalibration = useCallback(() => {
@@ -192,13 +207,10 @@ export function useMotionTracking(): UseMotionTrackingReturn {
     calibrationRef.current.active = false;
 
     if (steps > 0) {
-      // We know the free throw line is ~4.57m away
       const calibrated = FREE_THROW_DISTANCE / steps;
       setStepLength(calibrated);
     }
 
-    // Reset position — user is now at the free throw line
-    // which is (0, FREE_THROW_DISTANCE) in court coords
     positionRef.current = { x: 0, y: FREE_THROW_DISTANCE };
     setPosition({ x: 0, y: FREE_THROW_DISTANCE });
   }, []);
