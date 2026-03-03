@@ -1,4 +1,5 @@
 import { useGeolocation } from "./hooks/useGeolocation";
+import { useMotionTracking } from "./hooks/useMotionTracking";
 import { useVoiceRecognition } from "./hooks/useVoiceRecognition";
 import { useSession } from "./hooks/useSession";
 import { ActiveSession } from "./components/ActiveSession";
@@ -8,12 +9,13 @@ import "./App.css";
 
 function App() {
   const geo = useGeolocation();
+  const motion = useMotionTracking();
   const {
     session,
     phase,
     startSetup,
     setHoopPosition,
-    setCourtDirection,
+    finishCalibrationPhase,
     logShot,
     endSession,
     resetSession,
@@ -22,10 +24,7 @@ function App() {
   } = useSession();
 
   const handleShotResult = (result: ShotResult) => {
-    const pos = geo.capturePosition();
-    if (pos) {
-      logShot(pos, result);
-    }
+    logShot(motion.position.x, motion.position.y, result);
   };
 
   const voice = useVoiceRecognition(handleShotResult);
@@ -46,14 +45,17 @@ function App() {
             <div className="hero-icon">🏀</div>
             <h2 className="title">Track Your Shots</h2>
             <p className="subtitle">
-              Set your hoop location, then shoot around. Log makes and misses
-              with tap or voice. See your shot chart when you're done.
+              Set your hoop location, walk to the free throw line to calibrate,
+              then shoot around. Log makes and misses with tap or voice.
             </p>
             <button
               className="btn-primary"
-              onClick={() => {
-                geo.startTracking();
-                startSetup();
+              onClick={async () => {
+                const granted = await motion.requestPermissions();
+                if (granted) {
+                  geo.startTracking();
+                  startSetup();
+                }
               }}
             >
               Start Session
@@ -61,60 +63,91 @@ function App() {
           </div>
         )}
 
-        {/* SETTING HOOP — Stand at the hoop */}
+        {/* SETTING HOOP — Stand under the basket facing the FT line */}
         {phase === "setting_hoop" && (
           <div className="screen-center">
             <div className="step-badge">Step 1 of 2</div>
-            <h2 className="title">Stand at the Hoop</h2>
+            <h2 className="title">Stand Under the Basket</h2>
             <p className="subtitle">
-              Go stand directly under the basket, then tap the button below.
+              Stand directly under the hoop and <strong>face the free throw line</strong>.
+              Hold your phone in front of you pointing the same direction you're facing.
             </p>
             <div className="gps-status">
               {geo.position
-                ? `GPS locked — ±${geo.accuracy?.toFixed(0)}m accuracy`
+                ? `GPS locked — ±${geo.accuracy?.toFixed(0)}m`
                 : "Acquiring GPS..."}
+              {motion.heading != null && (
+                <span> · Compass: {motion.heading.toFixed(0)}°</span>
+              )}
             </div>
             <button
               className="btn-primary"
-              disabled={!geo.position}
-              onClick={() => geo.position && setHoopPosition(geo.position)}
+              disabled={!geo.position || motion.heading == null}
+              onClick={() => {
+                if (geo.position && motion.heading != null) {
+                  setHoopPosition(geo.position);
+                  motion.startCalibration(motion.heading);
+                }
+              }}
             >
-              {geo.position ? "Set Hoop Here" : "Waiting for GPS..."}
+              {geo.position && motion.heading != null
+                ? "Set Hoop & Start Walking"
+                : "Waiting for sensors..."}
             </button>
           </div>
         )}
 
-        {/* SETTING DIRECTION — Walk to free throw line */}
-        {phase === "setting_direction" && (
+        {/* CALIBRATING — Walk to the free throw line */}
+        {phase === "calibrating" && (
           <div className="screen-center">
             <div className="step-badge">Step 2 of 2</div>
             <h2 className="title">Walk to the Free Throw Line</h2>
             <p className="subtitle">
-              Walk straight out from the hoop to the free throw line (or center
-              of the court), then tap the button. This tells the app which
-              direction the court faces.
+              Walk at a normal pace straight to the free throw line. This
+              calibrates your step length for accurate tracking.
             </p>
+            <div className="calibration-info">
+              <div className="calibration-stat">
+                <span className="calibration-value">{motion.stepCount}</span>
+                <span className="calibration-label">steps detected</span>
+              </div>
+            </div>
             <button
               className="btn-primary"
-              onClick={() => geo.position && setCourtDirection(geo.position)}
-              disabled={!geo.position}
+              disabled={motion.stepCount < 2}
+              onClick={() => {
+                motion.finishCalibration();
+                motion.startTracking();
+                finishCalibrationPhase();
+              }}
             >
-              Set Court Direction
+              {motion.stepCount < 2
+                ? "Start walking..."
+                : `Done — ${motion.stepCount} steps detected`}
             </button>
+            <p className="hint">
+              Step length will be calibrated to ~4.6m (free throw distance)
+            </p>
           </div>
         )}
 
         {/* ACTIVE — Shooting */}
         {phase === "active" && session && (
           <ActiveSession
-            position={geo.position}
-            accuracy={geo.accuracy}
+            motionPosition={motion.position}
+            heading={motion.heading}
+            stepLength={motion.stepLength}
             isListening={voice.isListening}
             lastHeard={voice.lastHeard}
             shots={session.shots}
             onHit={() => handleShotResult("hit")}
             onMiss={() => handleShotResult("miss")}
-            onEnd={endSession}
+            onEnd={() => {
+              motion.stopTracking();
+              geo.stopTracking();
+              voice.stopListening();
+              endSession();
+            }}
             onToggleVoice={() => {
               if (voice.isListening) {
                 voice.stopListening();
@@ -130,7 +163,6 @@ function App() {
           <div>
             <h2 className="title" style={{ textAlign: "center" }}>Session Summary</h2>
 
-            {/* Overall stats */}
             <div className="stats-row">
               <div className="stat-card">
                 <div className="stat-value">{totalStats.attempts}</div>
@@ -146,10 +178,8 @@ function App() {
               </div>
             </div>
 
-            {/* Court map */}
             <CourtMap stats={stats} />
 
-            {/* New session */}
             <div style={{ textAlign: "center", marginTop: 24 }}>
               <button className="btn-primary" onClick={resetSession}>
                 New Session
@@ -159,12 +189,9 @@ function App() {
         )}
 
         {/* Errors */}
-        {geo.error && (
-          <div className="error-bar">GPS Error: {geo.error}</div>
-        )}
-        {voice.error && (
-          <div className="error-bar">Voice Error: {voice.error}</div>
-        )}
+        {geo.error && <div className="error-bar">GPS Error: {geo.error}</div>}
+        {motion.error && <div className="error-bar">Sensor Error: {motion.error}</div>}
+        {voice.error && <div className="error-bar">Voice Error: {voice.error}</div>}
       </main>
     </div>
   );

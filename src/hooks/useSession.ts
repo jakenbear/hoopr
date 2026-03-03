@@ -1,16 +1,17 @@
 import { useState, useCallback } from "react";
 import type { GeoPosition, Session, Shot, ShotResult, ZoneStats, CourtZone } from "../types";
-import { classifyZone } from "../utils/zones";
+import { classifyZoneFromCoords } from "../utils/zones";
 
-type SessionPhase = "idle" | "setting_hoop" | "setting_direction" | "active" | "review";
+type SessionPhase = "idle" | "setting_hoop" | "calibrating" | "active" | "review";
 
 interface UseSessionReturn {
   session: Session | null;
   phase: SessionPhase;
   startSetup: () => void;
   setHoopPosition: (pos: GeoPosition) => void;
-  setCourtDirection: (pos: GeoPosition) => void;
-  logShot: (position: GeoPosition, result: ShotResult) => void;
+  startCalibrationPhase: () => void;
+  finishCalibrationPhase: () => void;
+  logShot: (courtX: number, courtY: number, result: ShotResult) => void;
   endSession: () => void;
   resetSession: () => void;
   stats: ZoneStats[];
@@ -37,33 +38,26 @@ export function useSession(): UseSessionReturn {
       shots: [],
       startTime: Date.now(),
     });
-    setPhase("setting_direction");
+    setPhase("calibrating");
   }, []);
 
-  const setCourtDirection = useCallback((pos: GeoPosition) => {
-    setSession((prev) => {
-      if (!prev) return prev;
-      // Calculate bearing from hoop to where the user walked
-      const dLng = ((pos.lng - prev.hoopPosition.lng) * Math.PI) / 180;
-      const lat1 = (prev.hoopPosition.lat * Math.PI) / 180;
-      const lat2 = (pos.lat * Math.PI) / 180;
-      const y = Math.sin(dLng) * Math.cos(lat2);
-      const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-      const bearing = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-      return { ...prev, hoopBearing: bearing };
-    });
+  const startCalibrationPhase = useCallback(() => {
+    setPhase("calibrating");
+  }, []);
+
+  const finishCalibrationPhase = useCallback(() => {
     setPhase("active");
   }, []);
 
-  const logShot = useCallback((position: GeoPosition, result: ShotResult) => {
+  const logShot = useCallback((courtX: number, courtY: number, result: ShotResult) => {
     setSession((prev) => {
       if (!prev) return prev;
-      const zone = classifyZone(prev.hoopPosition, prev.hoopBearing, position);
+      const zone = classifyZoneFromCoords(courtX, courtY);
       const shot: Shot = {
         id: generateId(),
         zone,
         result,
-        position,
+        position: { lat: courtX, lng: courtY }, // store court coords here for now
         timestamp: Date.now(),
       };
       return { ...prev, shots: [...prev.shots, shot] };
@@ -104,7 +98,8 @@ export function useSession(): UseSessionReturn {
     phase,
     startSetup,
     setHoopPosition,
-    setCourtDirection,
+    startCalibrationPhase,
+    finishCalibrationPhase,
     logShot,
     endSession,
     resetSession,

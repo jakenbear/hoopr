@@ -105,6 +105,45 @@ export function classifyZone(
   return isLeft ? "left_wing_mid" : "right_wing_mid";
 }
 
+/**
+ * Classify zone directly from court coordinates (x, y in meters).
+ * Used by motion tracking — no GPS conversion needed.
+ */
+export function classifyZoneFromCoords(x: number, y: number): CourtZone {
+  const dist = Math.sqrt(x * x + y * y);
+  const absX = Math.abs(x);
+  const isLeft = x < 0;
+
+  // In the paint
+  if (dist <= FREE_THROW_DISTANCE && absX <= PAINT_WIDTH / 2) {
+    if (dist <= 1.5) return "paint";
+    if (absX <= 1.0) return "free_throw";
+    return isLeft ? "left_block" : "right_block";
+  }
+
+  // Elbows
+  if (dist <= PAINT_DEPTH && absX > PAINT_WIDTH / 2 && absX <= PAINT_WIDTH) {
+    return isLeft ? "left_elbow" : "right_elbow";
+  }
+
+  // Corner 3
+  if (y <= CORNER_THREE_DEPTH && absX > PAINT_WIDTH / 2) {
+    return isLeft ? "left_corner_3" : "right_corner_3";
+  }
+
+  // Beyond 3-point line
+  if (dist >= THREE_POINT_DISTANCE) {
+    const angle = Math.atan2(absX, y) * (180 / Math.PI);
+    if (angle < 25) return "top_key_3";
+    return isLeft ? "left_wing_3" : "right_wing_3";
+  }
+
+  // Mid-range
+  const angle = Math.atan2(absX, y) * (180 / Math.PI);
+  if (angle < 25) return "top_key_mid";
+  return isLeft ? "left_wing_mid" : "right_wing_mid";
+}
+
 // Zone display names
 export const ZONE_LABELS: Record<CourtZone, string> = {
   paint: "Paint",

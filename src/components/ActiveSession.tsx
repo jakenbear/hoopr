@@ -1,9 +1,10 @@
-import type { GeoPosition, Shot } from "../types";
+import type { Shot } from "../types";
 import { ZONE_LABELS } from "../utils/zones";
 
 interface ActiveSessionProps {
-  position: GeoPosition | null;
-  accuracy: number | null;
+  motionPosition: { x: number; y: number };
+  heading: number | null;
+  stepLength: number;
   isListening: boolean;
   lastHeard: string | null;
   shots: Shot[];
@@ -14,8 +15,9 @@ interface ActiveSessionProps {
 }
 
 export function ActiveSession({
-  position,
-  accuracy,
+  motionPosition,
+  heading,
+  stepLength,
   isListening,
   lastHeard,
   shots,
@@ -26,12 +28,13 @@ export function ActiveSession({
 }: ActiveSessionProps) {
   const lastShot = shots.length > 0 ? shots[shots.length - 1] : null;
   const makes = shots.filter((s) => s.result === "hit").length;
+  const dist = Math.sqrt(motionPosition.x ** 2 + motionPosition.y ** 2);
 
   return (
     <div style={{ textAlign: "center" }}>
-      {/* GPS Status */}
+      {/* Position info */}
       <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>
-        GPS: {position ? `±${accuracy?.toFixed(0)}m` : "acquiring..."}
+        {dist.toFixed(1)}m from hoop · {heading != null ? `${heading.toFixed(0)}°` : "—"} · step: {(stepLength * 100).toFixed(0)}cm
       </div>
 
       {/* Shot counter */}
