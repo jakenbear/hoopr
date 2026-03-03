@@ -1,8 +1,10 @@
 import type { Shot } from "../types";
 import { ZONE_LABELS } from "../utils/zones";
+import { LiveCourt } from "./LiveCourt";
 
 interface ActiveSessionProps {
   motionPosition: { x: number; y: number };
+  trail: { x: number; y: number }[];
   heading: number | null;
   stepLength: number;
   isListening: boolean;
@@ -16,6 +18,7 @@ interface ActiveSessionProps {
 
 export function ActiveSession({
   motionPosition,
+  trail,
   heading,
   stepLength,
   isListening,
@@ -41,7 +44,7 @@ export function ActiveSession({
       <div style={{ fontSize: 48, fontWeight: "bold", color: "#f8fafc", marginBottom: 4 }}>
         {makes}/{shots.length}
       </div>
-      <div style={{ fontSize: 14, color: "#94a3b8", marginBottom: 24 }}>
+      <div style={{ fontSize: 14, color: "#94a3b8", marginBottom: 16 }}>
         {shots.length > 0
           ? `${Math.round((makes / shots.length) * 100)}% shooting`
           : "Take your first shot"}
@@ -51,7 +54,7 @@ export function ActiveSession({
       {lastShot && (
         <div
           style={{
-            marginBottom: 24,
+            marginBottom: 16,
             padding: "8px 16px",
             borderRadius: 8,
             background: lastShot.result === "hit" ? "#166534" : "#991b1b",
@@ -62,6 +65,9 @@ export function ActiveSession({
           {lastShot.result === "hit" ? "MAKE" : "MISS"} — {ZONE_LABELS[lastShot.zone]}
         </div>
       )}
+
+      {/* Live court map with trail */}
+      <LiveCourt position={motionPosition} trail={trail} shots={shots} />
 
       {/* Big tap buttons */}
       <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>

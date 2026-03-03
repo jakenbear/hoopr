@@ -189,6 +189,7 @@ function App() {
         {phase === "active" && session && (
           <ActiveSession
             motionPosition={motion.position}
+            trail={motion.trail}
             heading={motion.heading}
             stepLength={motion.stepLength}
             isListening={voice.isListening}

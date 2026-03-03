@@ -7,6 +7,7 @@ interface Position {
 
 interface UseMotionTrackingReturn {
   position: Position;
+  trail: Position[];
   heading: number | null; // compass heading in degrees
   stepCount: number;
   stepLength: number;
@@ -30,6 +31,7 @@ const GRAVITY = 9.81;
 
 export function useMotionTracking(): UseMotionTrackingReturn {
   const [position, setPosition] = useState<Position>({ x: 0, y: 0 });
+  const [trail, setTrail] = useState<Position[]>([]);
   const [heading, setHeading] = useState<number | null>(null);
   const [stepCount, setStepCount] = useState(0);
   const [stepLength, setStepLength] = useState(DEFAULT_STEP_LENGTH);
@@ -184,6 +186,7 @@ export function useMotionTracking(): UseMotionTrackingReturn {
           };
 
           setPosition({ ...positionRef.current });
+          setTrail((prev) => [...prev, { ...positionRef.current }]);
         }
       }
 
@@ -206,6 +209,7 @@ export function useMotionTracking(): UseMotionTrackingReturn {
     };
     positionRef.current = { x: 0, y: 0 };
     setPosition({ x: 0, y: 0 });
+    setTrail([]);
     setStepCount(0);
     // Reset filter state
     gravityRef.current = { x: 0, y: 0, z: GRAVITY };
@@ -228,6 +232,7 @@ export function useMotionTracking(): UseMotionTrackingReturn {
 
     positionRef.current = { x: 0, y: FREE_THROW_DISTANCE };
     setPosition({ x: 0, y: FREE_THROW_DISTANCE });
+    setTrail([{ x: 0, y: FREE_THROW_DISTANCE }]);
   }, []);
 
   const startTracking = useCallback(() => {
@@ -243,6 +248,7 @@ export function useMotionTracking(): UseMotionTrackingReturn {
 
   return {
     position,
+    trail,
     heading,
     stepCount,
     stepLength,
