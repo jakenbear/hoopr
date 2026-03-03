@@ -21,7 +21,7 @@ interface UseMotionTrackingReturn {
 
 const DEFAULT_STEP_LENGTH = 0.75; // meters, average step
 const FREE_THROW_DISTANCE = 4.57; // meters from hoop
-const STEP_THRESHOLD = 12; // acceleration magnitude threshold for step detection
+const STEP_THRESHOLD = 10.5; // acceleration magnitude threshold for step detection
 const STEP_COOLDOWN_MS = 300; // minimum time between steps
 
 export function useMotionTracking(): UseMotionTrackingReturn {
@@ -133,6 +133,9 @@ export function useMotionTracking(): UseMotionTrackingReturn {
         risingRef.current = false;
         lastStepTimeRef.current = now;
 
+        // Always update step count in UI
+        setStepCount((c) => c + 1);
+
         // Count step for calibration
         if (calibrationRef.current?.active) {
           calibrationRef.current.steps++;
@@ -156,7 +159,6 @@ export function useMotionTracking(): UseMotionTrackingReturn {
           };
 
           setPosition({ ...positionRef.current });
-          setStepCount((c) => c + 1);
         }
       }
 
