@@ -48,11 +48,12 @@ export function useMotionTracking(): UseMotionTrackingReturn {
     steps: number;
   } | null>(null);
 
-  // Improved step detection state
-  const filteredRef = useRef<number>(GRAVITY); // low-pass filtered magnitude
-  const valleyRef = useRef<number>(GRAVITY); // most recent local minimum
-  const wasRisingRef = useRef(false); // was the signal going up last sample?
-  const prevFilteredRef = useRef<number>(GRAVITY);
+  // Improved step detection state — tracks vertical (gravity-axis) acceleration
+  const gravityRef = useRef<{ x: number; y: number; z: number }>({ x: 0, y: 0, z: GRAVITY });
+  const filteredRef = useRef<number>(0); // low-pass filtered vertical accel
+  const valleyRef = useRef<number>(0); // most recent local minimum
+  const wasRisingRef = useRef(false);
+  const prevFilteredRef = useRef<number>(0);
 
   const requestPermissions = useCallback(async (): Promise<boolean> => {
     const DME = DeviceMotionEvent as unknown as {
@@ -115,15 +116,28 @@ export function useMotionTracking(): UseMotionTrackingReturn {
     const handleMotion = (e: DeviceMotionEvent) => {
       if (!isTrackingRef.current && !calibrationRef.current?.active) return;
 
-      const acc = e.accelerationIncludingGravity;
-      if (!acc || acc.x == null || acc.y == null || acc.z == null) return;
+      const accWithG = e.accelerationIncludingGravity;
+      if (!accWithG || accWithG.x == null || accWithG.y == null || accWithG.z == null) return;
 
-      const rawMagnitude = Math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2);
+      // Isolate gravity vector using a slow low-pass filter
+      const gAlpha = 0.8; // heavy smoothing to extract stable gravity direction
+      const g = gravityRef.current;
+      g.x = gAlpha * g.x + (1 - gAlpha) * accWithG.x;
+      g.y = gAlpha * g.y + (1 - gAlpha) * accWithG.y;
+      g.z = gAlpha * g.z + (1 - gAlpha) * accWithG.z;
 
-      // Low-pass filter: smooths out hand jitter, screen taps, etc.
-      // Only passes through the ~1-2 Hz walking frequency
+      // Project total acceleration onto gravity direction (dot product / |g|)
+      // This gives us the acceleration component along the vertical axis only.
+      // Walking creates a bounce along gravity; waving phone sideways/up-down doesn't
+      // consistently align with gravity direction.
+      const gMag = Math.sqrt(g.x ** 2 + g.y ** 2 + g.z ** 2);
+      const verticalAccel = gMag > 0.1
+        ? (accWithG.x * g.x + accWithG.y * g.y + accWithG.z * g.z) / gMag
+        : 0;
+
+      // Low-pass filter the vertical component
       const filtered =
-        FILTER_ALPHA * rawMagnitude + (1 - FILTER_ALPHA) * filteredRef.current;
+        FILTER_ALPHA * verticalAccel + (1 - FILTER_ALPHA) * filteredRef.current;
       filteredRef.current = filtered;
 
       const prev = prevFilteredRef.current;
@@ -194,9 +208,10 @@ export function useMotionTracking(): UseMotionTrackingReturn {
     setPosition({ x: 0, y: 0 });
     setStepCount(0);
     // Reset filter state
-    filteredRef.current = GRAVITY;
-    prevFilteredRef.current = GRAVITY;
-    valleyRef.current = GRAVITY;
+    gravityRef.current = { x: 0, y: 0, z: GRAVITY };
+    filteredRef.current = 0;
+    prevFilteredRef.current = 0;
+    valleyRef.current = 0;
     wasRisingRef.current = false;
   }, []);
 
