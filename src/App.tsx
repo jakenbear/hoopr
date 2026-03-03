@@ -2,14 +2,24 @@ import { useGeolocation } from "./hooks/useGeolocation";
 import { useMotionTracking } from "./hooks/useMotionTracking";
 import { useVoiceRecognition } from "./hooks/useVoiceRecognition";
 import { useSession } from "./hooks/useSession";
+import { useWakeLock } from "./hooks/useWakeLock";
+import { useVibration } from "./hooks/useVibration";
+import { useSessionHistory } from "./hooks/useSessionHistory";
+import { useAnnouncer } from "./hooks/useAnnouncer";
 import { ActiveSession } from "./components/ActiveSession";
 import { CourtMap } from "./components/CourtMap";
+import { SessionHistoryList } from "./components/SessionHistory";
+import { classifyZoneFromCoords } from "./utils/zones";
 import type { ShotResult } from "./types";
 import "./App.css";
 
 function App() {
   const geo = useGeolocation();
   const motion = useMotionTracking();
+  const wakeLock = useWakeLock();
+  const vibration = useVibration();
+  const announcer = useAnnouncer();
+  const { history, saveSession, deleteSession } = useSessionHistory();
   const {
     session,
     phase,
@@ -24,10 +34,45 @@ function App() {
   } = useSession();
 
   const handleShotResult = (result: ShotResult) => {
-    logShot(motion.position.x, motion.position.y, result);
+    const x = motion.position.x;
+    const y = motion.position.y;
+    logShot(x, y, result);
+
+    // Haptic feedback
+    if (result === "hit") {
+      vibration.vibrateHit();
+    } else {
+      vibration.vibrateMiss();
+    }
+
+    // Voice announcement
+    if (session) {
+      const zone = classifyZoneFromCoords(x, y);
+      const newMakes = session.shots.filter((s) => s.result === "hit").length + (result === "hit" ? 1 : 0);
+      const newAttempts = session.shots.length + 1;
+      announcer.announceShot(result, zone, newMakes, newAttempts);
+    }
   };
 
   const voice = useVoiceRecognition(handleShotResult);
+
+  const handleEndSession = () => {
+    motion.stopTracking();
+    geo.stopTracking();
+    voice.stopListening();
+    wakeLock.release();
+    announcer.setEnabled(false);
+    endSession();
+  };
+
+  // Save session to history when entering review
+  const handleEndAndSave = () => {
+    handleEndSession();
+    // Save after state updates — use current session
+    if (session && session.shots.length > 0) {
+      saveSession({ ...session, endTime: Date.now() });
+    }
+  };
 
   return (
     <div className="app">
@@ -41,25 +86,34 @@ function App() {
       <main className="main">
         {/* IDLE — Start screen */}
         {phase === "idle" && (
-          <div className="screen-center">
-            <div className="hero-icon">🏀</div>
-            <h2 className="title">Track Your Shots</h2>
-            <p className="subtitle">
-              Set your hoop location, walk to the free throw line to calibrate,
-              then shoot around. Log makes and misses with tap or voice.
-            </p>
-            <button
-              className="btn-primary"
-              onClick={async () => {
-                const granted = await motion.requestPermissions();
-                if (granted) {
-                  geo.startTracking();
-                  startSetup();
-                }
-              }}
-            >
-              Start Session
-            </button>
+          <div>
+            <div className="screen-center">
+              <div className="hero-icon">🏀</div>
+              <h2 className="title">Track Your Shots</h2>
+              <p className="subtitle">
+                Set your hoop location, walk to the free throw line to calibrate,
+                then shoot around. Log makes and misses with tap or voice.
+              </p>
+              <button
+                className="btn-primary"
+                onClick={async () => {
+                  const granted = await motion.requestPermissions();
+                  if (granted) {
+                    geo.startTracking();
+                    wakeLock.request();
+                    announcer.setEnabled(true);
+                    startSetup();
+                  }
+                }}
+              >
+                Start Session
+              </button>
+            </div>
+
+            {/* Session history */}
+            {history.length > 0 && (
+              <SessionHistoryList history={history} onDelete={deleteSession} />
+            )}
           </div>
         )}
 
@@ -142,12 +196,7 @@ function App() {
             shots={session.shots}
             onHit={() => handleShotResult("hit")}
             onMiss={() => handleShotResult("miss")}
-            onEnd={() => {
-              motion.stopTracking();
-              geo.stopTracking();
-              voice.stopListening();
-              endSession();
-            }}
+            onEnd={handleEndAndSave}
             onToggleVoice={() => {
               if (voice.isListening) {
                 voice.stopListening();
