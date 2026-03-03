@@ -1,0 +1,17 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #0f172a;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Prevent pull-to-refresh and overscroll on mobile */
+html {
+  overscroll-behavior: none;
+}
