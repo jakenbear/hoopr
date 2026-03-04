@@ -42,16 +42,20 @@ function App() {
   // Viewing a past session
   const [viewingSession, setViewingSession] = useState<Session | null>(null);
 
+  // Pocket mode — disables touch, voice only
+  const [pocketMode, setPocketMode] = useState(false);
+
   const handleMark = useCallback(() => {
     setMarkedPosition({ x: motion.position.x, y: motion.position.y });
     vibration.vibrateHit(); // quick feedback that mark was registered
   }, [motion.position, vibration]);
 
   const handleShotResult = useCallback((result: ShotResult) => {
-    // Use marked position if available, otherwise current position
-    const pos = markedPosition ?? motion.position;
-    const x = pos.x;
-    const y = pos.y;
+    // Require a mark before logging — ignore if no position marked
+    if (!markedPosition) return;
+
+    const x = markedPosition.x;
+    const y = markedPosition.y;
     logShot(x, y, result);
 
     // Clear the mark
@@ -71,7 +75,7 @@ function App() {
       const newAttempts = session.shots.length + 1;
       announcer.announceShot(result, zone, newMakes, newAttempts);
     }
-  }, [markedPosition, motion.position, logShot, vibration, session, announcer]);
+  }, [markedPosition, logShot, vibration, session, announcer]);
 
   const handleVoice = useCallback((word: "hit" | "miss" | "mark") => {
     if (word === "mark") {
@@ -229,6 +233,7 @@ function App() {
             lastHeard={voice.lastHeard}
             shots={session.shots}
             markedPosition={markedPosition}
+            pocketMode={pocketMode}
             onMark={handleMark}
             onHit={() => handleShotResult("hit")}
             onMiss={() => handleShotResult("miss")}
@@ -240,6 +245,7 @@ function App() {
                 voice.startListening();
               }
             }}
+            onTogglePocketMode={() => setPocketMode((p) => !p)}
           />
         )}
 
