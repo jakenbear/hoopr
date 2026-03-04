@@ -4,6 +4,7 @@ interface LiveCourtProps {
   position: { x: number; y: number };
   trail: { x: number; y: number }[];
   shots: Shot[];
+  markedPosition?: { x: number; y: number } | null;
 }
 
 // Court dimensions in meters (half court)
@@ -23,7 +24,7 @@ function toSvg(x: number, y: number): { sx: number; sy: number } {
   };
 }
 
-export function LiveCourt({ position, trail, shots }: LiveCourtProps) {
+export function LiveCourt({ position, trail, shots, markedPosition }: LiveCourtProps) {
   const hoop = toSvg(0, 0);
   const current = toSvg(position.x, position.y);
 
@@ -132,6 +133,17 @@ export function LiveCourt({ position, trail, shots }: LiveCourtProps) {
           );
         })}
 
+        {/* Marked position */}
+        {markedPosition && (() => {
+          const mp = toSvg(markedPosition.x, markedPosition.y);
+          return (
+            <>
+              <circle cx={mp.sx} cy={mp.sy} r="8" fill="none" stroke="#f59e0b" strokeWidth="2" strokeDasharray="3 2" />
+              <circle cx={mp.sx} cy={mp.sy} r="3" fill="#f59e0b" />
+            </>
+          );
+        })()}
+
         {/* Current position */}
         <circle cx={current.sx} cy={current.sy} r="6" fill="#3b82f6" />
         <circle cx={current.sx} cy={current.sy} r="10" fill="none" stroke="#3b82f6" strokeWidth="1" opacity="0.4" />
@@ -151,6 +163,7 @@ export function LiveCourt({ position, trail, shots }: LiveCourtProps) {
         <span><span style={{ color: "#3b82f6" }}>●</span> You</span>
         <span><span style={{ color: "#22c55e" }}>●</span> Make</span>
         <span><span style={{ color: "#ef4444" }}>●</span> Miss</span>
+        <span><span style={{ color: "#f59e0b" }}>◎</span> Marked</span>
         <span><span style={{ color: "#f97316" }}>○</span> Hoop</span>
       </div>
     </div>

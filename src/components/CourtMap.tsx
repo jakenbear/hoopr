@@ -1,8 +1,9 @@
-import type { ZoneStats } from "../types";
+import type { Shot, ZoneStats } from "../types";
 import { ZONE_POSITIONS, ZONE_LABELS } from "../utils/zones";
 
 interface CourtMapProps {
   stats: ZoneStats[];
+  shots?: Shot[];
 }
 
 function getZoneColor(percentage: number): string {
@@ -13,7 +14,24 @@ function getZoneColor(percentage: number): string {
   return "#ef4444"; // red
 }
 
-export function CourtMap({ stats }: CourtMapProps) {
+// Convert court coords (meters) to SVG coords for the review court map
+// Court map SVG is 500x600, hoop at (250, 540)
+const MAP_COURT_WIDTH = 15.24;
+const MAP_COURT_DEPTH = 14.33;
+
+function courtToSvg(x: number, y: number): { sx: number; sy: number } {
+  const padX = 25;
+  const padTop = 30;
+  const svgW = 450; // 500 - 2*25
+  const svgH = 540; // 600 - 30 - 30
+
+  return {
+    sx: padX + (x + MAP_COURT_WIDTH / 2) * (svgW / MAP_COURT_WIDTH),
+    sy: padTop + svgH - y * (svgH / MAP_COURT_DEPTH),
+  };
+}
+
+export function CourtMap({ stats, shots }: CourtMapProps) {
   const statsMap = new Map(stats.map((s) => [s.zone, s]));
 
   return (
@@ -40,6 +58,25 @@ export function CourtMap({ stats }: CourtMapProps) {
         <line x1="210" y1="555" x2="290" y2="555" stroke="#94a3b8" strokeWidth="3" />
         <circle cx="250" cy="540" r="12" fill="none" stroke="#f97316" strokeWidth="2" />
 
+        {/* Individual shot dots */}
+        {shots?.map((shot) => {
+          // shot.position stores court coords as lat=x, lng=y
+          const sp = courtToSvg(shot.position.lat, shot.position.lng);
+          const isHit = shot.result === "hit";
+          return (
+            <circle
+              key={shot.id}
+              cx={sp.sx}
+              cy={sp.sy}
+              r="5"
+              fill={isHit ? "#22c55e" : "#ef4444"}
+              opacity="0.6"
+              stroke={isHit ? "#16a34a" : "#dc2626"}
+              strokeWidth="1"
+            />
+          );
+        })}
+
         {/* Zone markers */}
         {Object.entries(ZONE_POSITIONS).map(([zone, pos]) => {
           const stat = statsMap.get(zone as keyof typeof ZONE_POSITIONS);
@@ -47,7 +84,6 @@ export function CourtMap({ stats }: CourtMapProps) {
           const cy = (pos.y / 100) * 600;
 
           if (!stat) {
-            // No shots in this zone — show empty marker
             return (
               <g key={zone}>
                 <circle cx={cx} cy={cy} r="20" fill="#1e293b" stroke="#334155" strokeWidth="1" />
@@ -74,8 +110,16 @@ export function CourtMap({ stats }: CourtMapProps) {
         })}
       </svg>
 
-      {/* Legend */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+      {/* Dot legend */}
+      {shots && shots.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 8, fontSize: 11, color: "#64748b" }}>
+          <span><span style={{ color: "#22c55e" }}>●</span> Make</span>
+          <span><span style={{ color: "#ef4444" }}>●</span> Miss</span>
+        </div>
+      )}
+
+      {/* Zone legend */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
         {stats
           .sort((a, b) => b.percentage - a.percentage)
           .map((s) => (

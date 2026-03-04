@@ -34,7 +34,7 @@ function getSpeechRecognition(): SpeechRecognitionConstructor | null {
 }
 
 export function useVoiceRecognition(
-  onResult: (word: "hit" | "miss") => void
+  onResult: (word: "hit" | "miss" | "mark") => void
 ): UseVoiceRecognitionReturn {
   const [isListening, setIsListening] = useState(false);
   const [lastHeard, setLastHeard] = useState<string | null>(null);
@@ -63,7 +63,10 @@ export function useVoiceRecognition(
         const transcript = last[0].transcript.trim().toLowerCase();
         setLastHeard(transcript);
 
-        if (transcript.includes("hit") || transcript.includes("swish") || transcript.includes("bucket")) {
+        // Check mark first so "mark" doesn't accidentally match other words
+        if (transcript.includes("mark") || transcript.includes("spot") || transcript.includes("here")) {
+          onResultRef.current("mark");
+        } else if (transcript.includes("hit") || transcript.includes("swish") || transcript.includes("bucket")) {
           onResultRef.current("hit");
         } else if (transcript.includes("miss") || transcript.includes("brick") || transcript.includes("nope")) {
           onResultRef.current("miss");

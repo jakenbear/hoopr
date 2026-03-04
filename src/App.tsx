@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import { useGeolocation } from "./hooks/useGeolocation";
 import { useMotionTracking } from "./hooks/useMotionTracking";
 import { useVoiceRecognition } from "./hooks/useVoiceRecognition";
@@ -33,10 +34,23 @@ function App() {
     totalStats,
   } = useSession();
 
-  const handleShotResult = (result: ShotResult) => {
-    const x = motion.position.x;
-    const y = motion.position.y;
+  // Pending shot position — set by MARK, consumed by HIT/MISS
+  const [markedPosition, setMarkedPosition] = useState<{ x: number; y: number } | null>(null);
+
+  const handleMark = useCallback(() => {
+    setMarkedPosition({ x: motion.position.x, y: motion.position.y });
+    vibration.vibrateHit(); // quick feedback that mark was registered
+  }, [motion.position, vibration]);
+
+  const handleShotResult = useCallback((result: ShotResult) => {
+    // Use marked position if available, otherwise current position
+    const pos = markedPosition ?? motion.position;
+    const x = pos.x;
+    const y = pos.y;
     logShot(x, y, result);
+
+    // Clear the mark
+    setMarkedPosition(null);
 
     // Haptic feedback
     if (result === "hit") {
@@ -52,26 +66,29 @@ function App() {
       const newAttempts = session.shots.length + 1;
       announcer.announceShot(result, zone, newMakes, newAttempts);
     }
-  };
+  }, [markedPosition, motion.position, logShot, vibration, session, announcer]);
 
-  const voice = useVoiceRecognition(handleShotResult);
+  const handleVoice = useCallback((word: "hit" | "miss" | "mark") => {
+    if (word === "mark") {
+      handleMark();
+    } else {
+      handleShotResult(word);
+    }
+  }, [handleMark, handleShotResult]);
 
-  const handleEndSession = () => {
+  const voice = useVoiceRecognition(handleVoice);
+
+  const handleEndAndSave = () => {
     motion.stopTracking();
     geo.stopTracking();
     voice.stopListening();
     wakeLock.release();
     announcer.setEnabled(false);
     endSession();
-  };
-
-  // Save session to history when entering review
-  const handleEndAndSave = () => {
-    handleEndSession();
-    // Save after state updates — use current session
     if (session && session.shots.length > 0) {
       saveSession({ ...session, endTime: Date.now() });
     }
+    setMarkedPosition(null);
   };
 
   return (
@@ -92,7 +109,7 @@ function App() {
               <h2 className="title">Track Your Shots</h2>
               <p className="subtitle">
                 Set your hoop location, walk to the free throw line to calibrate,
-                then shoot around. Log makes and misses with tap or voice.
+                then shoot around. Say "MARK" to lock your spot, then "HIT" or "MISS" after.
               </p>
               <button
                 className="btn-primary"
@@ -110,14 +127,13 @@ function App() {
               </button>
             </div>
 
-            {/* Session history */}
             {history.length > 0 && (
               <SessionHistoryList history={history} onDelete={deleteSession} />
             )}
           </div>
         )}
 
-        {/* SETTING HOOP — Stand under the basket facing the FT line */}
+        {/* SETTING HOOP */}
         {phase === "setting_hoop" && (
           <div className="screen-center">
             <div className="step-badge">Step 1 of 2</div>
@@ -151,7 +167,7 @@ function App() {
           </div>
         )}
 
-        {/* CALIBRATING — Walk to the free throw line */}
+        {/* CALIBRATING */}
         {phase === "calibrating" && (
           <div className="screen-center">
             <div className="step-badge">Step 2 of 2</div>
@@ -195,6 +211,8 @@ function App() {
             isListening={voice.isListening}
             lastHeard={voice.lastHeard}
             shots={session.shots}
+            markedPosition={markedPosition}
+            onMark={handleMark}
             onHit={() => handleShotResult("hit")}
             onMiss={() => handleShotResult("miss")}
             onEnd={handleEndAndSave}
@@ -228,7 +246,7 @@ function App() {
               </div>
             </div>
 
-            <CourtMap stats={stats} />
+            <CourtMap stats={stats} shots={session.shots} />
 
             <div style={{ textAlign: "center", marginTop: 24 }}>
               <button className="btn-primary" onClick={resetSession}>

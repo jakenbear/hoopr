@@ -10,6 +10,8 @@ interface ActiveSessionProps {
   isListening: boolean;
   lastHeard: string | null;
   shots: Shot[];
+  markedPosition: { x: number; y: number } | null;
+  onMark: () => void;
   onHit: () => void;
   onMiss: () => void;
   onEnd: () => void;
@@ -24,6 +26,8 @@ export function ActiveSession({
   isListening,
   lastHeard,
   shots,
+  markedPosition,
+  onMark,
   onHit,
   onMiss,
   onEnd,
@@ -51,7 +55,7 @@ export function ActiveSession({
       </div>
 
       {/* Last shot indicator */}
-      {lastShot && (
+      {lastShot && !markedPosition && (
         <div
           style={{
             marginBottom: 16,
@@ -66,10 +70,48 @@ export function ActiveSession({
         </div>
       )}
 
-      {/* Live court map with trail */}
-      <LiveCourt position={motionPosition} trail={trail} shots={shots} />
+      {/* Pending mark indicator */}
+      {markedPosition && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "8px 16px",
+            borderRadius: 8,
+            background: "#1e3a5f",
+            border: "1px solid #3b82f6",
+            display: "inline-block",
+            fontSize: 14,
+            color: "#93c5fd",
+          }}
+        >
+          Shot marked — waiting for HIT or MISS
+        </div>
+      )}
 
-      {/* Big tap buttons */}
+      {/* Live court map with trail */}
+      <LiveCourt position={motionPosition} trail={trail} shots={shots} markedPosition={markedPosition} />
+
+      {/* MARK button */}
+      <button
+        onClick={onMark}
+        style={{
+          width: "100%",
+          padding: "16px 0",
+          fontSize: 16,
+          fontWeight: "bold",
+          borderRadius: 12,
+          border: markedPosition ? "2px solid #3b82f6" : "2px dashed #475569",
+          background: markedPosition ? "#1e3a5f" : "#0f172a",
+          color: markedPosition ? "#93c5fd" : "#94a3b8",
+          cursor: "pointer",
+          touchAction: "manipulation",
+          marginBottom: 12,
+        }}
+      >
+        {markedPosition ? "MARKED — Shoot now!" : "MARK SPOT"}
+      </button>
+
+      {/* HIT / MISS buttons */}
       <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
         <button
           onClick={onHit}
