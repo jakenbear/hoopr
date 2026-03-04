@@ -2,10 +2,11 @@ import type { Session } from "../types";
 
 interface SessionHistoryListProps {
   history: Session[];
+  onSelect: (session: Session) => void;
   onDelete: (id: string) => void;
 }
 
-export function SessionHistoryList({ history, onDelete }: SessionHistoryListProps) {
+export function SessionHistoryList({ history, onSelect, onDelete }: SessionHistoryListProps) {
   return (
     <div style={{ marginTop: 40 }}>
       <h3 style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0", marginBottom: 12 }}>
@@ -35,30 +36,38 @@ export function SessionHistoryList({ history, onDelete }: SessionHistoryListProp
                 background: "#1e293b",
                 borderRadius: 10,
                 padding: "12px 16px",
+                cursor: "pointer",
               }}
+              onClick={() => onSelect(s)}
             >
               <div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "#f8fafc" }}>
                   {makes}/{s.shots.length} — {pct}%
                 </div>
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                  {dateStr} at {timeStr}
+                  {dateStr} at {timeStr} · {s.shots.length} shots
                 </div>
               </div>
-              <button
-                onClick={() => onDelete(s.id)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#475569",
-                  fontSize: 18,
-                  cursor: "pointer",
-                  padding: "4px 8px",
-                }}
-                aria-label="Delete session"
-              >
-                ×
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 12, color: "#475569" }}>View →</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(s.id);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#475569",
+                    fontSize: 18,
+                    cursor: "pointer",
+                    padding: "4px 8px",
+                  }}
+                  aria-label="Delete session"
+                >
+                  ×
+                </button>
+              </div>
             </div>
           );
         })}

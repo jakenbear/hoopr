@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import type { Session } from "./types";
 import { useGeolocation } from "./hooks/useGeolocation";
 import { useMotionTracking } from "./hooks/useMotionTracking";
 import { useVoiceRecognition } from "./hooks/useVoiceRecognition";
@@ -10,6 +11,7 @@ import { useAnnouncer } from "./hooks/useAnnouncer";
 import { ActiveSession } from "./components/ActiveSession";
 import { CourtMap } from "./components/CourtMap";
 import { SessionHistoryList } from "./components/SessionHistory";
+import { SessionDetail } from "./components/SessionDetail";
 import { classifyZoneFromCoords } from "./utils/zones";
 import type { ShotResult } from "./types";
 import "./App.css";
@@ -36,6 +38,9 @@ function App() {
 
   // Pending shot position — set by MARK, consumed by HIT/MISS
   const [markedPosition, setMarkedPosition] = useState<{ x: number; y: number } | null>(null);
+
+  // Viewing a past session
+  const [viewingSession, setViewingSession] = useState<Session | null>(null);
 
   const handleMark = useCallback(() => {
     setMarkedPosition({ x: motion.position.x, y: motion.position.y });
@@ -101,8 +106,8 @@ function App() {
       </header>
 
       <main className="main">
-        {/* IDLE — Start screen */}
-        {phase === "idle" && (
+        {/* IDLE — Start screen or viewing a past session */}
+        {phase === "idle" && !viewingSession && (
           <div>
             <div className="screen-center">
               <div className="hero-icon">🏀</div>
@@ -128,9 +133,21 @@ function App() {
             </div>
 
             {history.length > 0 && (
-              <SessionHistoryList history={history} onDelete={deleteSession} />
+              <SessionHistoryList
+                history={history}
+                onSelect={setViewingSession}
+                onDelete={deleteSession}
+              />
             )}
           </div>
+        )}
+
+        {/* Viewing a past session */}
+        {phase === "idle" && viewingSession && (
+          <SessionDetail
+            session={viewingSession}
+            onBack={() => setViewingSession(null)}
+          />
         )}
 
         {/* SETTING HOOP */}
