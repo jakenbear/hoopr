@@ -47,8 +47,9 @@ function App() {
 
   const handleMark = useCallback(() => {
     setMarkedPosition({ x: motion.position.x, y: motion.position.y });
-    vibration.vibrateHit(); // quick feedback that mark was registered
-  }, [motion.position, vibration]);
+    vibration.vibrateHit();
+    announcer.speak("Ready");
+  }, [motion.position, vibration, announcer]);
 
   const handleShotResult = useCallback((result: ShotResult) => {
     // Require a mark before logging — ignore if no position marked
