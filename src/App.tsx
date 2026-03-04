@@ -12,7 +12,8 @@ import { ActiveSession } from "./components/ActiveSession";
 import { CourtMap } from "./components/CourtMap";
 import { SessionHistoryList } from "./components/SessionHistory";
 import { SessionDetail } from "./components/SessionDetail";
-import { classifyZoneFromCoords } from "./utils/zones";
+import { classifyZoneFromCoords, ZONE_LABELS } from "./utils/zones";
+import { getRandomCongrats, buildSessionSummary } from "./utils/congratulations";
 import type { ShotResult } from "./types";
 import "./App.css";
 
@@ -78,28 +79,64 @@ function App() {
     }
   }, [markedPosition, logShot, vibration, session, announcer]);
 
-  const handleVoice = useCallback((word: "hit" | "miss" | "mark") => {
-    if (word === "mark") {
+  const handleVoice = useCallback((word: "hit" | "miss" | "mark" | "done") => {
+    if (word === "done") {
+      handleEndAndSave();
+    } else if (word === "mark") {
       handleMark();
     } else {
       handleShotResult(word);
     }
-  }, [handleMark, handleShotResult]);
+  }, [handleMark, handleShotResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const voice = useVoiceRecognition(handleVoice);
 
-  const handleEndAndSave = () => {
+  const handleEndAndSave = useCallback(() => {
     motion.stopTracking();
     geo.stopTracking();
-    voice.stopListening();
     wakeLock.release();
-    announcer.setEnabled(false);
-    endSession();
+    setPocketMode(false);
+    setMarkedPosition(null);
+
+    // Announce session summary before stopping voice/announcer
     if (session && session.shots.length > 0) {
+      const makes = session.shots.filter((s) => s.result === "hit").length;
+      const attempts = session.shots.length;
+
+      // Find best and worst zones
+      const zoneMap = new Map<string, { makes: number; attempts: number }>();
+      for (const shot of session.shots) {
+        const z = zoneMap.get(shot.zone) ?? { makes: 0, attempts: 0 };
+        z.attempts++;
+        if (shot.result === "hit") z.makes++;
+        zoneMap.set(shot.zone, z);
+      }
+
+      let bestZone: { name: string; percentage: number } | undefined;
+      let worstZone: { name: string; percentage: number } | undefined;
+
+      for (const [zone, data] of zoneMap) {
+        const pct = Math.round((data.makes / data.attempts) * 100);
+        const name = ZONE_LABELS[zone as keyof typeof ZONE_LABELS];
+        if (!bestZone || pct > bestZone.percentage) bestZone = { name, percentage: pct };
+        if (!worstZone || pct < worstZone.percentage) worstZone = { name, percentage: pct };
+      }
+
+      const summary = buildSessionSummary(makes, attempts, bestZone, worstZone);
+      const congrats = getRandomCongrats();
+      announcer.speak(`${summary} ${congrats}`);
+
       saveSession({ ...session, endTime: Date.now() });
     }
-    setMarkedPosition(null);
-  };
+
+    // Delay stopping voice/announcer so the summary can play
+    setTimeout(() => {
+      voice.stopListening();
+      announcer.setEnabled(false);
+    }, 500);
+
+    endSession();
+  }, [motion, geo, wakeLock, voice, announcer, session, saveSession, endSession]);
 
   return (
     <div className="app">

@@ -1,73 +1,121 @@
-# React + TypeScript + Vite
+# hoopr
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A basketball shot tracking web app. Track your shooting sessions using your phone's motion sensors and voice commands. Get zone-by-zone shot charts and stats.
 
-Currently, two official plugins are available:
+## How It Works
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Hoopr uses your phone's accelerometer, gyroscope, and compass to track your position on the court relative to the hoop. No extra hardware needed — just your phone.
 
-## React Compiler
+### Setup (Before Each Session)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. **Stand under the basket** facing the free throw line. Hold your phone in front of you.
+2. Tap **"Set Hoop & Start Walking"** — this locks the hoop location and court direction.
+3. **Walk to the free throw line** at a normal pace — the app counts your steps to calibrate your step length.
+4. Tap **"Done"** — calibration complete, you're ready to shoot.
 
-## Expanding the ESLint configuration
+### Shooting
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+The app tracks your position as you move around the court. The flow for each shot:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+1. Walk to your spot
+2. Say **"MARK"** (or tap MARK SPOT) — locks your shooting position. The app says **"Ready"**.
+3. Shoot the ball, chase the rebound
+4. Say **"HIT"** or **"MISS"** — logs the shot at your marked position
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+HIT/MISS are ignored unless you've marked your spot first. This prevents accidental logging while rebounding.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Voice Commands
+
+| Command | Alternatives | What it does |
+|---------|-------------|--------------|
+| **MARK** | "spot", "here" | Locks your current position as the shot location |
+| **HIT** | "swish", "bucket" | Logs a make at the marked position |
+| **MISS** | "brick", "nope" | Logs a miss at the marked position |
+| **DONE** | "finish", "end session" | Ends the session with a spoken summary |
+
+### Pocket Mode
+
+Tap **"Pocket Mode"** before putting your phone in your pocket. This:
+- Blacks out the screen to save battery
+- Blocks all touch input (no accidental pocket taps)
+- Voice commands still work normally
+- Hold the screen for 1.5 seconds to unlock
+
+### After Your Session
+
+Say **"DONE"** or tap **"End Session"** to finish. The app will:
+- Speak a full summary (makes/attempts, FG%, best zone, zone to work on)
+- Give you a random congratulations message
+- Show a court map with zone-by-zone percentages and individual shot dots
+- Save the session to your history
+
+### Session History
+
+Past sessions are saved locally and visible on the home screen. Tap any session to view the full court map and stats.
+
+## Court Zones
+
+The court is divided into 14 zones based on NBA court dimensions:
+
+- **Paint** — under the basket
+- **Left/Right Block** — low post
+- **Left/Right Elbow** — free throw line extended
+- **Free Throw** — free throw line
+- **Left/Right Wing Mid** — midrange wings
+- **Top of Key Mid** — midrange top of key
+- **Left/Right Corner 3** — corner threes
+- **Left/Right Wing 3** — wing threes
+- **Top of Key 3** — top of the arc
+
+## Features
+
+- **Motion tracking** — step detection via accelerometer with gravity-axis filtering (no false triggers from phone handling)
+- **Compass navigation** — tracks which direction you walk relative to the court
+- **Voice recognition** — hands-free shot logging via Web Speech API
+- **Voice announcements** — spoken feedback after each shot (zone, running stats)
+- **Haptic feedback** — vibration on makes and misses
+- **Wake lock** — screen stays on during sessions
+- **Pocket mode** — voice-only mode for phone-in-pocket play
+- **Session history** — saved to localStorage, viewable with full court maps
+- **Live debug court** — real-time mini court showing your position trail and shot dots
+
+## Tech Stack
+
+- React + TypeScript + Vite
+- Web Geolocation API (hoop GPS position)
+- Web DeviceMotion / DeviceOrientation API (step detection + compass)
+- Web Speech Recognition API (voice commands)
+- Web Speech Synthesis API (voice announcements)
+- Vibration API (haptic feedback)
+- Wake Lock API (screen on)
+- localStorage (session persistence)
+
+## Development
+
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+To test on your phone over local network:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npx vite --host
 ```
+
+Note: Voice recognition requires HTTPS on mobile. Deploy to a hosting service (Render, Vercel, Netlify) for full functionality on phone.
+
+## Deploy to Render
+
+1. Push to GitHub
+2. Create a new **Static Site** on Render
+3. **Build command:** `npm install && npm run build`
+4. **Publish directory:** `dist`
+
+## Known Limitations
+
+- **GPS accuracy** — only used for initial hoop position. Motion tracking handles the rest.
+- **Compass interference** — metal objects (backboard, fences) can affect compass readings. Calibrate with the phone away from metal.
+- **Step drift** — dead reckoning accumulates small errors over time. Acceptable for typical 20-30 minute sessions.
+- **Voice recognition** — requires HTTPS in production. Chrome and Samsung Internet supported. Firefox not supported.
+- **Vibration API** — not supported on iOS Safari. Works on Android.
